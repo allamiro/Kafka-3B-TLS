@@ -23,23 +23,43 @@ Broker ID: 3
 
 This project now ships with **Docker Compose** stacks that spin up a six-node Kafka KRaft cluster (3 controllers + 3 brokers) for quick local testing.
 
-| Stack | Security | Compose file |
-|-------|----------|--------------|
-| Plaintext | none | `kafka-cluster-docker/plaintext/docker-compose.yml` |
-| SSL/TLS   | TLS on all broker & client traffic | `kafka-cluster-docker/ssl/docker-compose.yml` |
+| Stack | Security | Compose file | Status |
+|-------|----------|--------------|--------|
+| Plaintext | None | `kafka-cluster-docker/plaintext/docker-compose.yml` | ✅ **Ready** |
+| SSL/TLS   | Hybrid PLAINTEXT/SSL listeners | `kafka-cluster-docker/ssl/docker-compose.yml` | ✅ **Ready** |
 
-Getting started:
+### Quick Start
 
+**Plaintext Cluster:**
 ```bash
-# Plaintext
 cd kafka-cluster-docker
 docker compose -f plaintext/docker-compose.yml up -d
-
-# TLS (run once to make certs, then start)
-cd kafka-cluster-docker/ssl
-./create-certs.sh
-docker compose up -d
 ```
 
-Full instructions live in [`kafka-cluster-docker/ReadMe.md`](kafka-cluster-docker/ReadMe.md).
+**SSL/TLS Cluster:**
+```bash
+# Generate certificates (one-time setup)
+cd kafka-cluster-docker/ssl
+./create-certs-simple.sh
+
+# Start cluster
+docker compose up -d
+
+# Test SSL connectivity
+echo "Hello SSL!" | docker exec -i broker-1 \
+  /opt/kafka/bin/kafka-console-producer.sh \
+  --bootstrap-server broker-1:9093 \
+  --topic test-topic \
+  --producer.config /etc/kafka/secrets/client.properties
+```
+
+### Features
+
+- **Official Apache Kafka Docker images** (not Confluent/Bitnami)
+- **KRaft mode** (no Zookeeper dependency)
+- **SSL/TLS encryption** with self-signed certificates
+- **Hybrid configuration**: PLAINTEXT for inter-broker, SSL for clients
+- **Full end-to-end testing** validated
+
+Full instructions and examples: [`kafka-cluster-docker/ReadMe.md`](kafka-cluster-docker/ReadMe.md)
 

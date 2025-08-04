@@ -1,7 +1,7 @@
 version: "3.9"
 
 services:
-  # ---------------------------- Controllers -------------------------
+  # --------------------------- Controllers ---------------------------
   controller-1:
     image: apache/kafka:latest
     container_name: controller-1
@@ -9,6 +9,7 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: controller
       KAFKA_LISTENERS: CONTROLLER://:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:9093,2@controller-2:9093,3@controller-3:9093
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
@@ -20,6 +21,7 @@ services:
       KAFKA_NODE_ID: 2
       KAFKA_PROCESS_ROLES: controller
       KAFKA_LISTENERS: CONTROLLER://:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:9093,2@controller-2:9093,3@controller-3:9093
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
@@ -31,91 +33,98 @@ services:
       KAFKA_NODE_ID: 3
       KAFKA_PROCESS_ROLES: controller
       KAFKA_LISTENERS: CONTROLLER://:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:9093,2@controller-2:9093,3@controller-3:9093
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
 
-  # ------------------------------ Brokers ---------------------------
+  # ----------------------------- Brokers -----------------------------
   broker-1:
     image: apache/kafka:latest
     container_name: broker-1
-    depends_on:
-      - controller-1
-      - controller-2
-      - controller-3
+    depends_on: [ controller-1, controller-2, controller-3 ]
     volumes:
-      - ./certs:/etc/kafka/secrets:ro
+      - ./keystore:/etc/kafka/secrets/keystore:ro
+      - ./truststore:/etc/kafka/secrets/truststore:ro
+      - ./client.properties:/etc/kafka/secrets/client.properties:ro
     ports:
       - "29092:9092"
+      - "29093:9093"
     environment:
       KAFKA_NODE_ID: 4
       KAFKA_PROCESS_ROLES: broker
-      KAFKA_LISTENERS: SSL://:19092,SSL_HOST://:9092
-      KAFKA_ADVERTISED_LISTENERS: SSL://broker-1:19092,SSL_HOST://localhost:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,SSL:SSL,SSL_HOST:SSL
-      KAFKA_SSL_KEYSTORE_FILENAME: broker-1.keystore.p12
-      KAFKA_SSL_KEYSTORE_CREDENTIALS: password
-      KAFKA_SSL_KEY_CREDENTIALS: password
-      KAFKA_SSL_TRUSTSTORE_FILENAME: broker.truststore.p12
-      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: password
-      KAFKA_INTER_BROKER_LISTENER_NAME: SSL
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,SSL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-1:9092,SSL://broker-1:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,SSL:SSL
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:9093,2@controller-2:9093,3@controller-3:9093
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_SSL_KEYSTORE_FILENAME: keystore/kafka-0.server.keystore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: keystore/kafka-0_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: keystore/kafka-0_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_FILENAME: truststore/kafka.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: keystore/kafka-0_keystore_creds
+      KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+      KAFKA_SSL_CLIENT_AUTH: none
 
   broker-2:
     image: apache/kafka:latest
     container_name: broker-2
-    depends_on:
-      - controller-1
-      - controller-2
-      - controller-3
+    depends_on: [ controller-1, controller-2, controller-3 ]
     volumes:
-      - ./certs:/etc/kafka/secrets:ro
+      - ./keystore:/etc/kafka/secrets/keystore:ro
+      - ./truststore:/etc/kafka/secrets/truststore:ro
+      - ./client.properties:/etc/kafka/secrets/client.properties:ro
     ports:
       - "39092:9092"
+      - "39093:9093"
     environment:
       KAFKA_NODE_ID: 5
       KAFKA_PROCESS_ROLES: broker
-      KAFKA_LISTENERS: SSL://:19092,SSL_HOST://:9092
-      KAFKA_ADVERTISED_LISTENERS: SSL://broker-2:19092,SSL_HOST://localhost:39092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,SSL:SSL,SSL_HOST:SSL
-      KAFKA_SSL_KEYSTORE_FILENAME: broker-2.keystore.p12
-      KAFKA_SSL_KEYSTORE_CREDENTIALS: password
-      KAFKA_SSL_KEY_CREDENTIALS: password
-      KAFKA_SSL_TRUSTSTORE_FILENAME: broker.truststore.p12
-      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: password
-      KAFKA_INTER_BROKER_LISTENER_NAME: SSL
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,SSL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-2:9092,SSL://broker-2:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,SSL:SSL
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:9093,2@controller-2:9093,3@controller-3:9093
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_SSL_KEYSTORE_FILENAME: keystore/kafka-1.server.keystore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: keystore/kafka-1_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: keystore/kafka-1_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_FILENAME: truststore/kafka.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: keystore/kafka-1_keystore_creds
+      KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+      KAFKA_SSL_CLIENT_AUTH: none
 
   broker-3:
     image: apache/kafka:latest
     container_name: broker-3
-    depends_on:
-      - controller-1
-      - controller-2
-      - controller-3
+    depends_on: [ controller-1, controller-2, controller-3 ]
     volumes:
-      - ./certs:/etc/kafka/secrets:ro
+      - ./keystore:/etc/kafka/secrets/keystore:ro
+      - ./truststore:/etc/kafka/secrets/truststore:ro
+      - ./client.properties:/etc/kafka/secrets/client.properties:ro
     ports:
       - "49092:9092"
+      - "49093:9093"
     environment:
       KAFKA_NODE_ID: 6
       KAFKA_PROCESS_ROLES: broker
-      KAFKA_LISTENERS: SSL://:19092,SSL_HOST://:9092
-      KAFKA_ADVERTISED_LISTENERS: SSL://broker-3:19092,SSL_HOST://localhost:49092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,SSL:SSL,SSL_HOST:SSL
-      KAFKA_SSL_KEYSTORE_FILENAME: broker-3.keystore.p12
-      KAFKA_SSL_KEYSTORE_CREDENTIALS: password
-      KAFKA_SSL_KEY_CREDENTIALS: password
-      KAFKA_SSL_TRUSTSTORE_FILENAME: broker.truststore.p12
-      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: password
-      KAFKA_INTER_BROKER_LISTENER_NAME: SSL
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,SSL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-3:9092,SSL://broker-3:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,SSL:SSL
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:9093,2@controller-2:9093,3@controller-3:9093
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_SSL_KEYSTORE_FILENAME: keystore/kafka-2.server.keystore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: keystore/kafka-2_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: keystore/kafka-2_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_FILENAME: truststore/kafka.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: keystore/kafka-2_keystore_creds
+      KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+      KAFKA_SSL_CLIENT_AUTH: none
 
 networks:
   default:

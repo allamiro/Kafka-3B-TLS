@@ -53,44 +53,85 @@ docker compose -f plaintext/docker-compose.yml down -v
 ---
 ## 2.  Run the SSL/TLS stack
 
-### 2.1 Generate certificates (one-time)
+**Note:** This stack provides both PLAINTEXT and SSL listeners for maximum flexibility.
+
+### 2.1 Generate SSL certificates
 
 ```bash
 cd kafka-cluster-docker/ssl
-./create-certs.sh
+
+# Generate self-signed certificates
+./create-certs-simple.sh
 ```
 
-This script will create:
-* `broker-1.keystore.p12`, `broker-2.keystore.p12`, `broker-3.keystore.p12`
-* Shared `broker.truststore.p12`
-* CA files `ca.crt/ca.key`
+This script creates:
+* **Keystores**: `keystore/kafka-{0,1,2}.server.keystore.jks`
+* **Truststore**: `truststore/kafka.truststore.jks`
+* **Client config**: `client.properties`
 
-### 2.2 Start the cluster
+### 2.2 Start the SSL cluster
 
 ```bash
-docker compose up -d          # in kafka-cluster-docker/ssl
+# Start in detached mode
+docker compose up -d
+
+# Check containers (should show 6 containers: 3 controllers + 3 brokers)
+docker compose ps
 ```
 
-### 2.3 Client connection examples
+### 2.3 SSL Configuration
+
+The SSL cluster provides hybrid connectivity:
+- **PLAINTEXT listeners**: Port 9092 (inter-broker communication)
+- **SSL listeners**: Port 9093 (encrypted client connections)
+- **External access**: 
+  - Broker 1: localhost:29092 (PLAINTEXT), localhost:29093 (SSL)
+  - Broker 2: localhost:39092 (PLAINTEXT), localhost:39093 (SSL)
+  - Broker 3: localhost:49092 (PLAINTEXT), localhost:49093 (SSL)
+
+### 2.4 Verify SSL functionality
 
 ```bash
-# Using the Kafka CLI from host
-/usr/bin/kafka-topics \
-  --bootstrap-server localhost:29092 \
-  --command-config <(cat <<EOF
-ssl.truststore.location=ssl/certs/broker.truststore.p12
-ssl.truststore.password=password
-ssl.keystore.location=ssl/certs/broker-1.keystore.p12
-ssl.keystore.password=password
-ssl.key.password=password
+# Create topic using PLAINTEXT (basic connectivity test)
+docker exec broker-1 /opt/kafka/bin/kafka-topics.sh \
+  --create --topic demo-topic \
+  --bootstrap-server broker-1:9092 \
+  --partitions 3 --replication-factor 3
+
+# Create topic using SSL (encrypted connection)
+docker exec broker-1 /opt/kafka/bin/kafka-topics.sh \
+  --create --topic secure-topic \
+  --bootstrap-server broker-1:9093 \
+  --command-config /etc/kafka/secrets/client.properties \
+  --partitions 3 --replication-factor 3
+
+# Test SSL message production
+echo "Hello SSL Kafka!" | docker exec -i broker-1 \
+  /opt/kafka/bin/kafka-console-producer.sh \
+  --bootstrap-server broker-1:9093 \
+  --topic secure-topic \
+  --producer.config /etc/kafka/secrets/client.properties
+
+# Test SSL message consumption
+docker exec broker-1 /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server broker-1:9093 \
+  --topic secure-topic \
+  --consumer.config /etc/kafka/secrets/client.properties \
+  --from-beginning
+```
+
+### 2.5 External SSL client configuration
+
+For external SSL clients, use the provided `client.properties` or create your own:
+
+```properties
 security.protocol=SSL
-EOF
-) --list
+ssl.truststore.location=./truststore/kafka.truststore.jks
+ssl.truststore.password=supersecret
+ssl.endpoint.identification.algorithm=
 ```
 
-> ⚠️  The CLI needs to run with matching truststore/keystore paths. In production you would distribute client certificates differently.
-
-Stop the TLS stack:
+Stop the SSL stack:
 
 ```bash
 docker compose down -v
