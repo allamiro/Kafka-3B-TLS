@@ -1,0 +1,8 @@
+# Test dependencies for the Kafka + ZooKeeper Compose lab.
+#
+#   python3 -m pip install -r tests/requirements.txt
+#
+# The lab itself needs nothing beyond python3, bash, openssl, docker and
+# docker compose — these are for the test suite only.
+pytest>=7.0
+PyYAML>=5.4

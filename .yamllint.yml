@@ -1,0 +1,26 @@
+# yamllint configuration for the Compose lab.
+# The Compose files are machine-generated, so cosmetic rules that the renderer
+# does not follow are relaxed rather than forcing churn into the generator.
+extends: default
+
+ignore: |
+  packages/
+  vendor/
+  docker-compose.generated.yml
+  docker-compose.itest.yml
+
+rules:
+  line-length:
+    # The generated SSL healthcheck command is a single long line by design.
+    max: 200
+    allow-non-breakable-words: true
+  comments:
+    min-spaces-from-content: 1
+  truthy:
+    # GitHub Actions uses `on:` as a key.
+    check-keys: false
+  document-start: disable
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1

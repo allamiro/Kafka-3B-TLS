@@ -1,0 +1,39 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci"
+    labels: [dependencies, ci]
+
+  - package-ecosystem: docker
+    directory: /images/kafka
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build"
+    labels: [dependencies, docker]
+    # The Kafka version is pinned deliberately: 3.9.x is the last line that
+    # supports ZooKeeper mode. Only the JRE base image should be bumped here.
+
+  - package-ecosystem: docker
+    directory: /images/zookeeper
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build"
+    labels: [dependencies, docker]
+
+  - package-ecosystem: pip
+    directory: /tests
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "test"
+    labels: [dependencies, tests]

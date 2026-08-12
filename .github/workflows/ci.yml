@@ -1,0 +1,213 @@
+name: CI
+
+on:
+  push:
+    branches: [master, kafka-distributed]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  lint:
+    name: Lint (shell, YAML, Dockerfiles, workflows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install linters
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck yamllint
+
+      - name: ShellCheck
+        run: |
+          shellcheck --severity=warning scripts/*.sh images/*/entrypoint.sh
+
+      - name: Shell syntax check (every script, including the legacy installers)
+        run: |
+          rc=0
+          while IFS= read -r f; do
+            bash -n "$f" || { echo "::error file=$f::bash syntax error"; rc=1; }
+          done < <(git ls-files '*.sh')
+          exit "$rc"
+
+      - name: yamllint
+        run: yamllint -c .yamllint.yml .
+
+      - name: hadolint
+        run: |
+          for dockerfile in images/*/Dockerfile; do
+            echo "--- $dockerfile"
+            docker run --rm -i -v "$PWD/.hadolint.yaml:/.hadolint.yaml:ro" \
+              hadolint/hadolint:latest-alpine hadolint - < "$dockerfile"
+          done
+
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color
+
+  unit:
+    name: Unit tests (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 matches RHEL 9 / Rocky 9, the target deployment hosts.
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip -r tests/requirements.txt
+
+      - name: Run unit tests
+        run: pytest -v --junit-xml=junit-${{ matrix.python }}.xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report-py${{ matrix.python }}
+          path: junit-${{ matrix.python }}.xml
+          retention-days: 14
+
+  compose:
+    name: Render and validate (${{ matrix.brokers }} brokers / ${{ matrix.zookeepers }} zk / ${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {brokers: 3, zookeepers: 3, mode: dual}
+          - {brokers: 3, zookeepers: 3, mode: ssl}
+          - {brokers: 3, zookeepers: 3, mode: plaintext}
+          - {brokers: 5, zookeepers: 3, mode: dual}
+          - {brokers: 7, zookeepers: 5, mode: ssl}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render
+        run: |
+          python3 scripts/render-compose.py \
+            --brokers ${{ matrix.brokers }} \
+            --zookeepers ${{ matrix.zookeepers }} \
+            --security-mode ${{ matrix.mode }} \
+            -o docker-compose.generated.yml
+
+      - name: Validate with docker compose
+        run: docker compose -f docker-compose.generated.yml config -q
+
+      - name: Assert the expected service count
+        run: |
+          expected=$(( ${{ matrix.brokers }} + ${{ matrix.zookeepers }} ))
+          actual=$(docker compose -f docker-compose.generated.yml config --services | wc -l)
+          echo "services: $actual (expected $expected)"
+          test "$actual" -eq "$expected"
+
+  build:
+    name: Build images
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the ZooKeeper image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: images/zookeeper/Dockerfile
+          push: false
+          load: true
+          tags: kafka-lab/zookeeper:ci
+          cache-from: type=gha,scope=zookeeper
+          cache-to: type=gha,scope=zookeeper,mode=max
+
+      - name: Build the Kafka image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: images/kafka/Dockerfile
+          push: false
+          load: true
+          tags: kafka-lab/kafka:ci
+          cache-from: type=gha,scope=kafka
+          cache-to: type=gha,scope=kafka,mode=max
+
+      - name: Smoke-check the images
+        run: |
+          docker run --rm kafka-lab/kafka:ci bash -c 'kafka-topics.sh --version'
+          docker run --rm --entrypoint bash kafka-lab/zookeeper:ci -c 'ls /opt/zookeeper/bin/zkServer.sh'
+
+  integration:
+    name: End-to-end (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    needs: [unit, build]
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [plaintext, ssl]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip -r tests/requirements.txt
+
+      - name: Run the ${{ matrix.mode }} cluster suite
+        run: pytest -v -m integration tests/integration/test_${{ matrix.mode }}_cluster.py
+
+      - name: Collect container logs on failure
+        if: failure()
+        run: |
+          docker compose -p kafka-lab-itest -f docker-compose.itest.yml logs --no-color > cluster-logs.txt 2>&1 || true
+          docker ps -a
+
+      - name: Upload container logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-logs-${{ matrix.mode }}
+          path: cluster-logs.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose -p kafka-lab-itest -f docker-compose.itest.yml down -v --remove-orphans || true
+
+  ci-passed:
+    name: CI passed
+    runs-on: ubuntu-latest
+    needs: [lint, unit, compose, build, integration]
+    if: always()
+    steps:
+      - name: Fail if any job failed
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if echo '${{ toJSON(needs) }}' | grep -q '"result": "failure"'; then
+            exit 1
+          fi
+          if echo '${{ toJSON(needs) }}' | grep -q '"result": "cancelled"'; then
+            exit 1
+          fi

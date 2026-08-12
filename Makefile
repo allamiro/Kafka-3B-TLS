@@ -20,7 +20,8 @@ REPLICATION_FACTOR  ?= 3
 
 .PHONY: help env certs render build up up-plaintext up-ssl down clean ps logs \
         validate vendor-sync create-topic list-topics describe \
-        produce-plaintext consume-plaintext produce-ssl consume-ssl
+        produce-plaintext consume-plaintext produce-ssl consume-ssl \
+        test-deps test test-fast test-integration test-all lint
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -99,3 +100,29 @@ produce-ssl: ## Interactive SSL producer (TOPIC=)
 
 consume-ssl: ## SSL consumer from beginning (TOPIC=)
 	@TOPIC=$(TOPIC) bash scripts/consume-ssl.sh
+
+# ---------------------------------------------------------------------------
+# Tests and linting  (see tests/README.md)
+# ---------------------------------------------------------------------------
+
+test-deps: ## Install the test dependencies (pytest, PyYAML)
+	@python3 -m pip install --upgrade pip -r tests/requirements.txt
+
+test: ## Run the unit tests (no Docker required)
+	@python3 -m pytest
+
+test-fast: ## Unit tests without the certificate suite
+	@python3 -m pytest -m "not slow and not integration"
+
+test-integration: ## End-to-end cluster tests (requires Docker; stop `make up` first)
+	@python3 -m pytest -m integration
+
+test-all: ## Every test, unit and end-to-end
+	@python3 -m pytest -m ""
+
+lint: ## Lint shell, YAML and Dockerfiles (skips tools that are not installed)
+	@command -v shellcheck >/dev/null && shellcheck --severity=warning scripts/*.sh images/*/entrypoint.sh \
+	  || echo "shellcheck not installed - skipped"
+	@for f in $$(git ls-files '*.sh'); do bash -n "$$f" || exit 1; done; echo "bash -n: all scripts parse"
+	@command -v yamllint >/dev/null && yamllint -c .yamllint.yml . \
+	  || echo "yamllint not installed - skipped"

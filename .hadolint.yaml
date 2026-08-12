@@ -1,0 +1,15 @@
+# hadolint configuration.
+failure-threshold: warning
+
+ignored:
+  # DL3008 — apt packages are intentionally unpinned: the base image is
+  # eclipse-temurin:17-jre and pinning Debian package versions there breaks
+  # every base-image refresh. The images are rebuilt and CVE-scanned in CI.
+  - DL3008
+  # DL3066 — `USER kafka` / `USER zookeeper` are created in the image with
+  # fixed uids (996 / 994), so the name always resolves inside the container.
+  - DL3066
+
+trustedRegistries:
+  - docker.io
+  - ghcr.io

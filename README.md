@@ -1,10 +1,32 @@
 # Kafka 3.9.2 + ZooKeeper 3.9.5 — Docker Compose Lab
 
+[![CI](https://github.com/allamiro/Kafka-3B-TLS/actions/workflows/ci.yml/badge.svg?branch=kafka-distributed)](https://github.com/allamiro/Kafka-3B-TLS/actions/workflows/ci.yml)
+[![Security](https://github.com/allamiro/Kafka-3B-TLS/actions/workflows/security.yml/badge.svg?branch=kafka-distributed)](https://github.com/allamiro/Kafka-3B-TLS/actions/workflows/security.yml)
+[![Release](https://github.com/allamiro/Kafka-3B-TLS/actions/workflows/release.yml/badge.svg)](https://github.com/allamiro/Kafka-3B-TLS/actions/workflows/release.yml)
+![Kafka 3.9.2](https://img.shields.io/badge/Apache%20Kafka-3.9.2-231F20?logo=apachekafka&logoColor=white)
+![ZooKeeper 3.9.5](https://img.shields.io/badge/ZooKeeper-3.9.5-D22128)
+![Mode: ZooKeeper](https://img.shields.io/badge/mode-ZooKeeper%20(not%20KRaft)-blue)
+
 A reproducible, expandable **ZooKeeper-based** Apache Kafka cluster in Docker
 Compose, with PLAINTEXT and SSL listeners and SSL inter-broker traffic. This is
 the modern replacement for the legacy bare-metal/Systemd scripts in this repo.
 
 > Branch: `kafka-distributed` · ZooKeeper mode · Kafka **3.9.2** · ZooKeeper **3.9.5**
+
+## Contents
+
+| | |
+|---|---|
+| [1. Project Overview](#1-project-overview) | [10. Air-Gapped Build](#10-air-gapped-build) |
+| [2. Why Kafka 3.9.2 and ZooKeeper 3.9.5](#2-why-kafka-392-and-zookeeper-395) | [11. Certificate Generation](#11-certificate-generation) |
+| [3. Why Kafka 4.x is NOT used](#3-why-kafka-4x-is-not-used-in-this-branch) | [12. Client Connection Examples](#12-client-connection-examples) |
+| [4. Architecture](#4-architecture) | [13. Migration from Legacy Systemd Scripts](#13-migration-from-legacy-systemd-scripts) |
+| [5. Repository Structure](#5-repository-structure) | [14. Troubleshooting](#14-troubleshooting) |
+| [6. Quick Start](#6-quick-start) | [15. Environment Configuration](#15-environment-configuration) |
+| [7. SSL Quick Start](#7-ssl-quick-start) | [16. Testing](#16-testing) |
+| [8. PLAINTEXT Quick Start](#8-plaintext-quick-start) | [17. CI/CD and Releases](#17-cicd-and-releases) |
+| [9. Scaling Beyond 3 Brokers](#9-scaling-beyond-3-brokers) | [18. Security](#18-security) |
+| | [19. Future KRaft Branch](#19-future-kraft-branch) |
 
 ---
 
@@ -110,7 +132,12 @@ ZooKeeper quorum ports `2888`/`3888` stay internal to `kafka-net`.
 │   ├── plaintext/client.properties
 │   └── ssl/client.properties
 ├── scripts/          render-compose.py, prepare/generate/import certs, helpers
+├── tests/
+│   ├── unit/         renderer, .env rules, entrypoints, PKI, repo hygiene
+│   └── integration/  real cluster: formation, replication, produce/consume, TLS
 ├── docs/             architecture, migration, ssl-design, scaling, airgapped, troubleshooting
+├── .github/workflows/ ci.yml, security.yml, release.yml
+├── SECURITY.md       threat model, hardening checklist, reporting
 └── vendor/           air-gapped tarballs (git-ignored)
 ```
 
@@ -129,8 +156,17 @@ make describe
 make down
 ```
 
-`docker` + `docker compose` are the only host prerequisites (the Kafka CLI runs
-inside the containers).
+`docker` + `docker compose` are the only host prerequisites for running the
+lab (the Kafka CLI runs inside the containers). `openssl` and `python3` are
+needed on the host for `make certs` and `make render`; `make test` additionally
+wants `pytest`.
+
+Sanity-check a change before starting anything:
+
+```bash
+make validate                 # .env sizing and security mode
+make test-fast                # unit tests, a few seconds
+```
 
 ## 7. SSL Quick Start
 
@@ -196,7 +232,7 @@ make certs          # generate (lab CA) or import (enterprise PKI), per .env
 ```
 
 - `KAFKA_CERT_MODE=generate` → Root CA → Intermediate CA → per-broker certs
-  (with SANs) → PKCS12 keystores/truststores + client truststore.
+  (with SANs) → PKCS12 keystores + PEM CA trust material for brokers and clients.
 - `KAFKA_CERT_MODE=import` → validates and wraps your existing CA/broker certs.
 
 Design and SAN requirements: [docs/ssl-design.md](docs/ssl-design.md).
@@ -210,7 +246,7 @@ In-network (any broker discovers the whole cluster from metadata):
 kafka-console-producer.sh --bootstrap-server kafka1:9092 --topic test-events
 # SSL (in-container client config written by the entrypoint)
 kafka-console-producer.sh --bootstrap-server kafka1:9093 --topic test-events \
-  --producer.config /etc/kafka/secrets/healthcheck.properties
+  --producer.config /opt/kafka/config/client-ssl.properties
 ```
 
 From the host (requires a local Kafka CLI):
@@ -280,16 +316,71 @@ KAFKA_SSL_PASSWORD=change-this
 make certs && make render && make up
 ```
 
-## 16. Security Notes
+## 16. Testing
 
-- This is a **lab / development** cluster.
-- **Do not** use the default passwords (`changeit`) in production.
-- **Do not** commit `.env`, generated private keys, or certificates — all are git-ignored.
-- Use a real secrets manager in production.
-- Use **mTLS** (`SSL_CLIENT_AUTH=required`) if client authentication is needed.
-- Add **SASL / authorization (ACLs)** for real multi-tenant access control.
+The suite is pytest-based and split into unit tests (no Docker, seconds) and
+end-to-end tests that build the images and start a real cluster.
 
-## 17. Future KRaft Branch
+```bash
+make test-deps          # pip install -r tests/requirements.txt
+make test               # unit tests
+make test-fast          # unit tests, skipping certificate generation
+make test-integration   # real cluster: needs Docker, `make down` first
+make lint               # shellcheck / bash -n / yamllint
+```
+
+| Layer | Covers |
+|-------|--------|
+| `tests/unit/test_render_compose.py` | Topology generation: broker/quorum sizing rules, listeners, ports, volumes, cert mounts, determinism |
+| `tests/unit/test_env_helpers.py` | `.env` loading and the environment > `.env` > default precedence |
+| `tests/unit/test_validate_env.py` | Guard rails: broker count ≥ 3, quorum of 3 or 5, RF ≤ brokers, security and cert modes, imported PKI paths |
+| `tests/unit/test_entrypoints.py` | `server.properties` / `zoo.cfg` rendering, and fail-fast when SSL material or identity variables are missing |
+| `tests/unit/test_committed_compose.py` | The three pre-rendered Compose files still match the renderer |
+| `tests/unit/test_certs.py` | The lab PKI, re-verified with openssl: chain, SANs, key agreement, PKCS12 stores, permissions, mutual TLS |
+| `tests/unit/test_repo_hygiene.py` | Shell syntax, strict mode, secret hygiene, README/Makefile drift |
+| `tests/integration/test_plaintext_cluster.py` | Ensemble election, broker registration in ZooKeeper, replicated topics, produce/consume, survival of a broker restart |
+| `tests/integration/test_ssl_cluster.py` | TLS handshake against the lab CA, cleartext port closed, encrypted inter-broker replication, produce/consume over TLS |
+
+Unit tests run against a temporary copy of the repository, so they never write
+into your working tree. Details and caveats: [tests/README.md](tests/README.md).
+
+## 17. CI/CD and Releases
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| [ci.yml](.github/workflows/ci.yml) | push, PR | Lint (ShellCheck, `bash -n`, hadolint, yamllint, actionlint) · unit tests on Python 3.9 and 3.12 · render + `docker compose config` across five topologies · build both images · plaintext and SSL end-to-end suites |
+| [security.yml](.github/workflows/security.yml) | push, PR, weekly | gitleaks over tree and history · Trivy filesystem and image scans · assertions on the shipped security defaults |
+| [release.yml](.github/workflows/release.yml) | tag `v*` | Re-verify, publish multi-arch images to GHCR, and attach a checksummed offline lab bundle to a GitHub release |
+
+Cutting a release:
+
+```bash
+git tag -a v1.0.0 -m "Kafka 3.9.2 + ZooKeeper 3.9.5 lab"
+git push origin v1.0.0
+```
+
+That publishes `ghcr.io/allamiro/kafka-3b-tls/kafka:1.0.0` and
+`.../zookeeper:1.0.0` for `linux/amd64` and `linux/arm64`, plus
+`kafka-zookeeper-lab-v1.0.0.tar.gz` with the Compose files, image definitions,
+certificate tooling, scripts and docs. Tags containing a hyphen
+(`v1.0.0-rc1`) are published as pre-releases and do not move `latest`.
+
+## 18. Security
+
+This is a **lab** cluster. The full threat model, what the defaults do and do
+not protect, the hardening checklist and how to report a vulnerability are in
+[SECURITY.md](SECURITY.md). The short version:
+
+- **Do not** use the default passwords (`changeit`) anywhere you care about.
+- **Do not** commit `.env`, generated private keys, or certificates — all are
+  git-ignored, and CI fails the build if they appear.
+- TLS encrypts traffic and verifies the *broker's* identity; it does not
+  authenticate clients. Use `SSL_CLIENT_AUTH=required` for mutual TLS.
+- There is **no SASL and no ACL** configuration — any client that trusts the CA
+  has full access. Add both before exposing this beyond a lab.
+- ZooKeeper is unauthenticated and deliberately not published to the host.
+
+## 19. Future KRaft Branch
 
 When this branch is stable, the KRaft variant goes in
 `feature/docker-compose-kafka-kraft`: Kafka 4.3.0+, no ZooKeeper, KRaft

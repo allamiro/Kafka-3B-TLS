@@ -1,8 +1,9 @@
 # Local environment (never commit real secrets/config)
 .env
 
-# Generated Compose file (rendered by scripts/render-compose.py)
+# Generated Compose files (rendered by scripts/render-compose.py)
 docker-compose.generated.yml
+docker-compose.itest.yml
 
 # Generated certificate material — never commit private keys or certs
 certs/generated/*
@@ -30,3 +31,4 @@ packages/
 .DS_Store
 __pycache__/
 *.pyc
+.pytest_cache/
