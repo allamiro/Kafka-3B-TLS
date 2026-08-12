@@ -1,0 +1,10 @@
+tickTime=${ZOO_TICK_TIME}
+initLimit=${ZOO_INIT_LIMIT}
+syncLimit=${ZOO_SYNC_LIMIT}
+dataDir=/var/lib/zookeeper/data
+dataLogDir=/var/lib/zookeeper/log
+clientPort=${ZOO_CLIENT_PORT}
+maxClientCnxns=${ZOO_MAX_CLIENT_CNXNS}
+admin.enableServer=false
+4lw.commands.whitelist=ruok,srvr,stat,conf,mntr
+${ZOO_SERVERS}

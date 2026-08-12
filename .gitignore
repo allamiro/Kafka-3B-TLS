@@ -1,0 +1,32 @@
+# Local environment (never commit real secrets/config)
+.env
+
+# Generated Compose file (rendered by scripts/render-compose.py)
+docker-compose.generated.yml
+
+# Generated certificate material — never commit private keys or certs
+certs/generated/*
+!certs/generated/.gitkeep
+
+# Vendored air-gapped tarballs (large binaries, fetched out of band)
+vendor/*.tgz
+vendor/*.tar.gz
+
+# Provided upstream distributions (build inputs, never committed — large)
+packages/
+
+# Any stray crypto material anywhere in the tree
+*.key
+*.csr
+*.crt
+*.srl
+*.pem
+*.p12
+*.jks
+*.keystore
+*.truststore
+
+# OS / tooling noise
+.DS_Store
+__pycache__/
+*.pyc

@@ -1,0 +1,18 @@
+# OpenSSL config for the lab Root CA (self-signed).
+[ req ]
+default_bits        = 4096
+default_md          = sha256
+prompt              = no
+distinguished_name  = dn
+x509_extensions     = v3_ca
+
+[ dn ]
+O  = ${CERT_ORG}
+OU = ${CERT_ORG_UNIT}
+CN = kafka-root-ca
+
+[ v3_ca ]
+basicConstraints       = critical, CA:TRUE
+keyUsage               = critical, keyCertSign, cRLSign
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always
