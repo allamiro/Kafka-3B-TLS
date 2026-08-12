@@ -27,8 +27,9 @@ Use `make ps`, `make logs SVC=kafka1`, and `make logs SVC=zookeeper1` first.
 
 ## SSL handshake failure
 - `SSLHandshakeException` / `unable to find valid certification path`.
-- The client truststore does not trust the broker's CA. Regenerate stores
-  (`make certs`) and use the matching `certs/generated/client/kafka.client.truststore.p12`.
+- The client does not trust the broker's CA. Regenerate the material
+  (`make certs`) and point the client at the matching
+  `certs/generated/client/ca-chain.crt` (`ssl.truststore.type=PEM`).
 - Confirm the broker is actually listening on SSL (`KAFKA_SECURITY_MODE=ssl|dual`).
 
 ## Hostname verification failure
@@ -47,9 +48,18 @@ Use `make ps`, `make logs SVC=kafka1`, and `make logs SVC=zookeeper1` first.
 - `KAFKA_SSL_PASSWORD` in `.env` must match the password used when the stores
   were generated. If you changed it, regenerate: `make clean --certs` then `make certs`.
 
-## Truststore password mismatch
-- Same cause/fix as keystore — the truststore uses the same `KAFKA_SSL_PASSWORD`.
-  Host-side `config/ssl/client.properties` must carry the same password.
+## trustAnchors parameter must be non-empty
+- `InvalidAlgorithmParameterException: the trustAnchors parameter must be non-empty`.
+- The truststore holds no entry the JDK recognises as a trust anchor — this is
+  what happens with a PKCS12 built by `openssl -nokeys`. The lab therefore uses
+  PEM trust material: `ssl.truststore.type=PEM` with `ca-chain.crt`, and no
+  truststore password. Check that `certs/generated/kafkaN/ca-chain.crt` exists
+  and is non-empty; regenerate with `make certs`.
+
+## Permission denied reading /etc/kafka/secrets
+- The broker container runs as an unprivileged user and mounts the certificate
+  directory read-only, so the directory needs `0755` and the keystore `0644`.
+  `make certs` sets these; if you copied material in by hand, fix the modes.
 
 ## Port already in use
 - `Bind for 0.0.0.0:19092 failed: port is already allocated`.

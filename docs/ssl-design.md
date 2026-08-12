@@ -16,21 +16,38 @@ certificate issued by the intermediate is trusted. This mirrors the legacy
 Root-CA → Intermediate-CA design, but generated in one pass with no manual
 `scp` of CSRs between hosts.
 
-## Stores (PKCS12, not JKS)
+## Stores: PKCS12 keystore, PEM trust material
 
 Per broker, under `certs/generated/kafkaN/`:
 
-| File | Contents | Used as |
-|------|----------|---------|
-| `kafka.server.keystore.p12` | broker private key + full cert chain | `ssl.keystore.location` |
-| `kafka.server.truststore.p12` | CA chain only (no key) | `ssl.truststore.location` |
+| File | Contents | Used as | Mode |
+|------|----------|---------|------|
+| `kafka.server.keystore.p12` | broker private key + full cert chain | `ssl.keystore.location` | `0644` |
+| `ca-chain.crt` | intermediate + root CA, PEM | `ssl.truststore.location` | `0644` |
+| `kafkaN.key` | bare private key (not read by the broker) | — | `0600` |
 
-Client truststore: `certs/generated/client/kafka.client.truststore.p12`.
+Client trust material: `certs/generated/client/ca-chain.crt`.
 
-PKCS12 is preferred over JKS: it is the modern Java default, interoperable with
-OpenSSL, and lets us build every store with **openssl alone** — no `keytool`
-(hence no Java) required on the host. Java 17 reads certificate-only PKCS12
-entries as trusted entries, so the truststores work without modification.
+The **keystore** is PKCS12: the modern Java default, interoperable with
+OpenSSL, and buildable with **openssl alone** — no `keytool` (hence no Java)
+required on the host.
+
+The **truststore is PEM, not PKCS12**, and this is deliberate. A PKCS12 file
+produced by `openssl pkcs12 -export -nokeys` contains plain certificate bags;
+the JDK only treats PKCS12 entries as trust anchors when `keytool` marked them
+as `trustedCertEntry`. Feeding such a file to Kafka fails at startup with:
+
+```text
+java.security.InvalidAlgorithmParameterException: the trustAnchors parameter must be non-empty
+```
+
+Kafka 2.7+ reads PEM trust material directly (KIP-651), so the brokers use
+`ssl.truststore.type=PEM` pointing at `ca-chain.crt`. That keeps the tool-chain
+openssl-only and needs no truststore password.
+
+The stores are `0644` because the broker runs as an unprivileged non-root user
+and bind-mounts `certs/generated/kafkaN` read-only; their contents are
+protected by `KAFKA_SSL_PASSWORD`. Bare private keys stay `0600`.
 
 ## Why SANs are required
 
@@ -63,9 +80,13 @@ checks for `DNS:kafkaN` (hard fail) and warns on the recommended extras.
 
 ## Inter-broker protocol
 
-Default `INTER_BROKER_LISTENER_NAME=SSL` ⇒ `security.inter.broker.protocol=SSL`,
-so replication and controller traffic between brokers is encrypted. In
-`plaintext` mode this drops to PLAINTEXT automatically.
+Default `INTER_BROKER_LISTENER_NAME=SSL` ⇒ `inter.broker.listener.name=SSL`, so
+replication and controller traffic between brokers is encrypted. In `plaintext`
+mode this drops to PLAINTEXT automatically.
+
+The protocol itself is resolved through `listener.security.protocol.map`;
+`security.inter.broker.protocol` is deliberately **not** set, because Kafka
+refuses to start when both it and `inter.broker.listener.name` are present.
 
 ## Validity & rotation
 

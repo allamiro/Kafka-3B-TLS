@@ -13,7 +13,7 @@ DATA_DIR="/var/lib/zookeeper/data"
 LOG_DIR="/var/lib/zookeeper/log"
 
 # --- Defaults (override via environment) ----------------------------------
-export ZOO_MY_ID="${ZOO_MY_ID:?ZOO_MY_ID is required (this node's id)}"
+export ZOO_MY_ID="${ZOO_MY_ID:?ZOO_MY_ID is required (the id of this node)}"
 export ZOO_CLIENT_PORT="${ZOO_CLIENT_PORT:-2181}"
 export ZOO_TICK_TIME="${ZOO_TICK_TIME:-2000}"
 export ZOO_INIT_LIMIT="${ZOO_INIT_LIMIT:-10}"

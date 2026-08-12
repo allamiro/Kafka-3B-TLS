@@ -23,9 +23,11 @@ kafka-console-producer.sh \
   --producer.config config/ssl/client.properties
 ```
 
-`make certs` (generate mode) rewrites `client.properties` with the password
-from your `.env`. The `ssl.truststore.location` is **relative to the repo
-root**, so run host-side commands from the repository root.
+`make certs` (generate mode) rewrites `client.properties`. The
+`ssl.truststore.location` is **relative to the repo root**, so run host-side
+commands from the repository root. Trust material is PEM
+(`ssl.truststore.type=PEM`), so no truststore password is involved — see
+[../../docs/ssl-design.md](../../docs/ssl-design.md).
 
 ## Mutual TLS
 

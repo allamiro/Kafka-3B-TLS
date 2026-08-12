@@ -152,7 +152,7 @@ services:
       - kafka1-data:/var/lib/kafka/data
       - ./certs/generated/kafka1:/etc/kafka/secrets:ro
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9093 --command-config /etc/kafka/secrets/healthcheck.properties >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9093 --command-config /opt/kafka/config/client-ssl.properties >/dev/null 2>&1"]
       interval: 15s
       timeout: 10s
       retries: 12
@@ -201,7 +201,7 @@ services:
       - kafka2-data:/var/lib/kafka/data
       - ./certs/generated/kafka2:/etc/kafka/secrets:ro
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9093 --command-config /etc/kafka/secrets/healthcheck.properties >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9093 --command-config /opt/kafka/config/client-ssl.properties >/dev/null 2>&1"]
       interval: 15s
       timeout: 10s
       retries: 12
@@ -250,7 +250,7 @@ services:
       - kafka3-data:/var/lib/kafka/data
       - ./certs/generated/kafka3:/etc/kafka/secrets:ro
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9093 --command-config /etc/kafka/secrets/healthcheck.properties >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9093 --command-config /opt/kafka/config/client-ssl.properties >/dev/null 2>&1"]
       interval: 15s
       timeout: 10s
       retries: 12

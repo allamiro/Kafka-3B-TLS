@@ -12,11 +12,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_env.sh"
 
 # Returns 0 if the certificate and key share the same public modulus.
+# SHA-256 rather than MD5: MD5 is unavailable on FIPS-enabled hosts.
 cert_key_match() {
   local cert="$1" key="$2"
   local cmod kmod
-  cmod="$(openssl x509 -noout -modulus -in "${cert}" 2>/dev/null | openssl md5)"
-  kmod="$(openssl rsa  -noout -modulus -in "${key}"  2>/dev/null | openssl md5)"
+  cmod="$(openssl x509 -noout -modulus -in "${cert}" 2>/dev/null | openssl sha256)"
+  kmod="$(openssl rsa  -noout -modulus -in "${key}"  2>/dev/null | openssl sha256)"
   [[ -n "${cmod}" && "${cmod}" == "${kmod}" ]]
 }
 

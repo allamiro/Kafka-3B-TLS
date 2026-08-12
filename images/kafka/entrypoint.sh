@@ -10,6 +10,9 @@ KAFKA_HOME="${KAFKA_HOME:-/opt/kafka}"
 TPL_DIR="${KAFKA_HOME}/templates"
 CONF="${KAFKA_HOME}/config/server.properties"
 SECRETS_DIR="/etc/kafka/secrets"
+# The secrets directory is bind-mounted read-only, so the generated client
+# config goes next to server.properties, which the broker user owns.
+CLIENT_CONF="${KAFKA_HOME:-/opt/kafka}/config/client-ssl.properties"
 PLAINTEXT_PORT=9092
 SSL_PORT=9093
 
@@ -43,14 +46,12 @@ case "${KAFKA_SECURITY_MODE}" in
     export KAFKA_ADVERTISED_LISTENERS="PLAINTEXT://${BROKER_HOSTNAME}:${PLAINTEXT_PORT}"
     export KAFKA_LISTENER_SECURITY_PROTOCOL_MAP="PLAINTEXT:PLAINTEXT"
     export KAFKA_INTER_BROKER_LISTENER_NAME="PLAINTEXT"
-    export KAFKA_SECURITY_INTER_BROKER_PROTOCOL="PLAINTEXT"
     ;;
   ssl)
     export KAFKA_LISTENERS="SSL://0.0.0.0:${SSL_PORT}"
     export KAFKA_ADVERTISED_LISTENERS="SSL://${BROKER_HOSTNAME}:${SSL_PORT}"
     export KAFKA_LISTENER_SECURITY_PROTOCOL_MAP="SSL:SSL"
     export KAFKA_INTER_BROKER_LISTENER_NAME="SSL"
-    export KAFKA_SECURITY_INTER_BROKER_PROTOCOL="SSL"
     need_ssl=1
     ;;
   dual)
@@ -58,7 +59,6 @@ case "${KAFKA_SECURITY_MODE}" in
     export KAFKA_ADVERTISED_LISTENERS="PLAINTEXT://${BROKER_HOSTNAME}:${PLAINTEXT_PORT},SSL://${BROKER_HOSTNAME}:${SSL_PORT}"
     export KAFKA_LISTENER_SECURITY_PROTOCOL_MAP="PLAINTEXT:PLAINTEXT,SSL:SSL"
     export KAFKA_INTER_BROKER_LISTENER_NAME="${INTER_BROKER_LISTENER_NAME}"
-    export KAFKA_SECURITY_INTER_BROKER_PROTOCOL="${INTER_BROKER_LISTENER_NAME}"
     need_ssl=1
     ;;
   *)
@@ -71,16 +71,17 @@ esac
 envsubst < "${TPL_DIR}/server.properties.tpl" > "${CONF}"
 
 if [[ "${need_ssl}" -eq 1 ]]; then
-  if [[ ! -f "${SECRETS_DIR}/kafka.server.keystore.p12" || ! -f "${SECRETS_DIR}/kafka.server.truststore.p12" ]]; then
+  if [[ ! -f "${SECRETS_DIR}/kafka.server.keystore.p12" || ! -f "${SECRETS_DIR}/ca-chain.crt" ]]; then
     echo "ERROR: SSL material missing in ${SECRETS_DIR}." >&2
-    echo "       Expected kafka.server.keystore.p12 and kafka.server.truststore.p12." >&2
+    echo "       Expected kafka.server.keystore.p12 and ca-chain.crt." >&2
     echo "       Run: make certs" >&2
     exit 1
   fi
   envsubst < "${TPL_DIR}/server-ssl.properties.tpl" >> "${CONF}"
 
-  # healthcheck client config (used by the image HEALTHCHECK in ssl-only mode)
-  envsubst < "${TPL_DIR}/client-ssl.properties.tpl" > "${SECRETS_DIR}/healthcheck.properties" || true
+  # Client config for the image/compose health check and for CLI tools run
+  # inside the container.
+  envsubst < "${TPL_DIR}/client-ssl.properties.tpl" > "${CLIENT_CONF}"
 fi
 
 echo "=== Rendered ${CONF} (mode=${KAFKA_SECURITY_MODE}) ==="

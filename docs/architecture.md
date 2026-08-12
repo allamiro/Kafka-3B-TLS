@@ -58,7 +58,7 @@ flowchart LR
 1. Compose builds the image (from `vendor/` tarball if present, else downloads from Apache).
 2. `depends_on … condition: service_healthy` holds the broker until every ZooKeeper node passes its `ruok`/`imok` healthcheck.
 3. The broker entrypoint renders `/opt/kafka/config/server.properties` from a template based on `KAFKA_SECURITY_MODE`, injecting listeners, the ZooKeeper connect string, and (when SSL is enabled) the PKCS12 store configuration.
-4. In SSL/dual mode the entrypoint refuses to start if the keystore/truststore are missing — run `make certs` first.
+4. In SSL/dual mode the entrypoint refuses to start if the keystore or the CA trust material is missing — run `make certs` first.
 5. `kafka-server-start.sh` launches the broker in the foreground (PID 1).
 
 ## Data persistence

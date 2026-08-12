@@ -13,7 +13,10 @@ FROM eclipse-temurin:17-jre
 ARG KAFKA_VERSION=3.9.2
 ARG SCALA_VERSION=2.13
 ARG KAFKA_TGZ=kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz
+# downloads.apache.org only carries the newest release of each line; once a
+# version ages out it is served from archive.apache.org, so try both.
 ARG KAFKA_DOWNLOAD_URL=https://downloads.apache.org/kafka/${KAFKA_VERSION}/${KAFKA_TGZ}
+ARG KAFKA_ARCHIVE_URL=https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/${KAFKA_TGZ}
 
 ENV KAFKA_HOME=/opt/kafka \
     PATH=/opt/kafka/bin:$PATH
@@ -35,7 +38,10 @@ RUN set -eux; \
         cp "/tmp/vendor/${KAFKA_TGZ}" "/tmp/${KAFKA_TGZ}"; \
     else \
         echo "Downloading ${KAFKA_DOWNLOAD_URL}"; \
-        curl -fSL -o "/tmp/${KAFKA_TGZ}" "${KAFKA_DOWNLOAD_URL}"; \
+        curl -fSL -o "/tmp/${KAFKA_TGZ}" "${KAFKA_DOWNLOAD_URL}" || { \
+            echo "Not on downloads.apache.org; trying ${KAFKA_ARCHIVE_URL}"; \
+            curl -fSL -o "/tmp/${KAFKA_TGZ}" "${KAFKA_ARCHIVE_URL}"; \
+        }; \
     fi; \
     tar -xzf "/tmp/${KAFKA_TGZ}" -C /opt; \
     mv "/opt/kafka_${SCALA_VERSION}-${KAFKA_VERSION}" "${KAFKA_HOME}"; \
@@ -43,9 +49,12 @@ RUN set -eux; \
     mkdir -p /var/lib/kafka/data /etc/kafka/secrets "${KAFKA_HOME}/config"; \
     chown -R kafka:kafka "${KAFKA_HOME}" /var/lib/kafka /etc/kafka
 
+# --chmod pins the in-image permissions so the build does not inherit a
+# restrictive umask from the developer's working tree: the kafka user has to
+# read the templates and execute the entrypoint.
 COPY images/kafka/templates/ ${KAFKA_HOME}/templates/
-COPY images/kafka/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh \
+COPY --chmod=0755 images/kafka/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod -R a+rX "${KAFKA_HOME}/templates" \
     && chown -R kafka:kafka "${KAFKA_HOME}/templates"
 
 USER kafka
@@ -55,12 +64,8 @@ EXPOSE 9092 9093
 
 # Readiness is enforced primarily by scripts/wait-for-kafka.sh + compose
 # health checks; this is a lightweight liveness probe on the API versions.
+# Exec form so the probe does not depend on a shell being PID 1's child.
 HEALTHCHECK --interval=15s --timeout=10s --start-period=45s --retries=10 \
-    CMD bash -c '/opt/kafka/bin/kafka-broker-api-versions.sh \
-        --bootstrap-server localhost:9092 >/dev/null 2>&1 \
-        || /opt/kafka/bin/kafka-broker-api-versions.sh \
-        --bootstrap-server localhost:9093 \
-        --command-config /etc/kafka/secrets/healthcheck.properties >/dev/null 2>&1' \
-        || exit 1
+    CMD ["bash", "-c", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9093 --command-config /opt/kafka/config/client-ssl.properties >/dev/null 2>&1"]
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

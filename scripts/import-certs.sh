@@ -68,19 +68,18 @@ for ((i=1; i<=BROKER_COUNT; i++)); do
   cat "${dir}/${name}.crt" "${CA}/chain.crt" > "${dir}/${name}.chain.crt"
   make_keystore "${dir}/${name}.crt" "${dir}/${name}.key" "${CA}/chain.crt" \
                 "${name}" "${dir}/kafka.server.keystore.p12" "${PASS}"
-  make_truststore "${CA}/chain.crt" "${dir}/kafka.server.truststore.p12" "${PASS}"
+  install_trust_material "${CA}/chain.crt" "${dir}/ca-chain.crt"
   ok "${name}: stores built from imported material"
 done
 
 # ---- client ----
 CLIENT="${OUT}/client"
 mkdir -p "${CLIENT}"
-make_truststore "${CA}/chain.crt" "${CLIENT}/kafka.client.truststore.p12" "${PASS}"
+install_trust_material "${CA}/chain.crt" "${CLIENT}/ca-chain.crt"
 cat > "${CLIENT}/client-ssl.properties" <<EOF
 security.protocol=SSL
-ssl.truststore.type=PKCS12
-ssl.truststore.location=${CERT_OUTPUT_DIR}/client/kafka.client.truststore.p12
-ssl.truststore.password=${PASS}
+ssl.truststore.type=PEM
+ssl.truststore.location=${CERT_OUTPUT_DIR}/client/ca-chain.crt
 ssl.endpoint.identification.algorithm=https
 EOF
 
@@ -103,4 +102,18 @@ fi
 
 mkdir -p "${REPO_ROOT}/config/ssl"
 cp -f "${CLIENT}/client-ssl.properties" "${REPO_ROOT}/config/ssl/client.properties"
+
+# ----------------------------------------------------------------------------
+# Permissions for the containers
+# ----------------------------------------------------------------------------
+# Brokers run as an unprivileged non-root user and mount these directories
+# read-only, so directories must be traversable and certificates readable.
+# Private keys (broker and CA) stay 0600 — the broker reads the PKCS12 store,
+# never the bare key.
+chmod 755 "${OUT}" 2>/dev/null || true
+for d in "${OUT}"/kafka* "${OUT}/client"; do
+  if [[ -d "${d}" ]]; then chmod 755 "${d}"; fi
+done
+find "${OUT}" -maxdepth 2 -name '*.crt' ! -path "${CA}/*" -exec chmod 644 {} +
+
 ok "Certificate import complete → ${CERT_OUTPUT_DIR}/"

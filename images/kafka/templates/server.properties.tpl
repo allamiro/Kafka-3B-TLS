@@ -12,8 +12,10 @@ zookeeper.connection.timeout.ms=18000
 listeners=${KAFKA_LISTENERS}
 advertised.listeners=${KAFKA_ADVERTISED_LISTENERS}
 listener.security.protocol.map=${KAFKA_LISTENER_SECURITY_PROTOCOL_MAP}
+# Kafka rejects a config that sets both inter.broker.listener.name and
+# security.inter.broker.protocol. The listener name is the right one here: the
+# protocol is resolved through listener.security.protocol.map above.
 inter.broker.listener.name=${KAFKA_INTER_BROKER_LISTENER_NAME}
-security.inter.broker.protocol=${KAFKA_SECURITY_INTER_BROKER_PROTOCOL}
 
 ############################# Threads / sockets ##############################
 num.network.threads=6

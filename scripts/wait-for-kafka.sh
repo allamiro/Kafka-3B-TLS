@@ -14,7 +14,7 @@ TIMEOUT="${TIMEOUT:-180}"
 deadline=$(( $(date +%s) + TIMEOUT ))
 
 if [[ "${KAFKA_SECURITY_MODE}" == "ssl" ]]; then
-  port=9093; cfg=(--command-config /etc/kafka/secrets/healthcheck.properties)
+  port=9093; cfg=(--command-config /opt/kafka/config/client-ssl.properties)
 else
   port=9092; cfg=()
 fi

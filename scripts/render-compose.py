@@ -202,7 +202,7 @@ def render(brokers: int, zks: int, mode: str, inter_broker: str, dotenv: dict) -
         # healthcheck
         if mode == "ssl":
             w("    healthcheck:")
-            w("      test: [\"CMD-SHELL\", \"kafka-broker-api-versions.sh --bootstrap-server localhost:9093 --command-config /etc/kafka/secrets/healthcheck.properties >/dev/null 2>&1\"]")
+            w("      test: [\"CMD-SHELL\", \"kafka-broker-api-versions.sh --bootstrap-server localhost:9093 --command-config /opt/kafka/config/client-ssl.properties >/dev/null 2>&1\"]")
         else:
             w("    healthcheck:")
             w("      test: [\"CMD-SHELL\", \"kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1\"]")
